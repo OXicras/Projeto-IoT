@@ -3,16 +3,27 @@
 #include <HTTPClient.h>
 #include <LiquidCrystal_I2C.h>
 #include <ArduinoJson.h>
+#include <PubSubClient.h>
 
 LiquidCrystal_I2C lcd (0x27, 20, 4);
 String pedirParaApi(int);
 
 const int pinBotao = 0;
-int contador = 1;
+int contador = 0;
 const char* nomeRedeWiFi = "SENAI EDUCACIONAL";
 const char* senhaRedeWiFi = "info@134";
 String enderecoAPI = "https://api.batmanapi.com/v1/characters/";
 
+const char* BROKER = "broker.emqx.io";
+const int PORTA = 1883;
+const char* TOPICO_SUB = "senai134/esp32/batmanApiBM/comando";
+const char* TOPICO_PUB = "senai134/esp32/batmanApiBM/status";
+
+void aoReceber(char*, byte*, unsigned int);
+void tratarJson(String);
+
+WiFiClient clienteWifi;
+PubSubClient mqtt(clienteWifi);
 
 JsonDocument doc;
 
@@ -41,21 +52,33 @@ void setup()
   lcd.clear();
   #pragma endregion
 
-  #pragma region Inicializacao Json
-  String batmanApi = pedirParaApi(contador);
-  DeserializationError erroJson = deserializeJson(doc, batmanApi);
+  #pragma region Conectando MQTT
+  mqtt.setServer(BROKER, PORTA);
+  mqtt.setCallback(aoReceber);
+  String id = "esp32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
 
-  if(erroJson)
-  {
-    Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
-    return;
-  }  
-  printApiLcd();
-  #pragma endregion
+  bool conectadoAoBroker = false;
+  conectadoAoBroker = mqtt.connect(id.c_str());
+
+  if(conectadoAoBroker)
+    {
+      Serial.printf("Conectado com sucesso ao Broker %s\n\r", BROKER);
+      mqtt.subscribe(TOPICO_SUB);
+      Serial.printf("Inscrito no tópico: %s\n\r", TOPICO_SUB);
+    }
+
+  else
+    {
+      Serial.print("Falha ao conectar ao broker %s\n\r");
+      Serial.print("Falha: "); Serial.println(mqtt.state());
+    }
+    #pragma endregion
 }
 
 void loop() 
 {
+  mqtt.loop();
+  
   #pragma region Botão
   bool estadoBotao = digitalRead(pinBotao);
   static bool estadoAnterior = estadoBotao;
@@ -72,7 +95,11 @@ void loop()
         Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
         return;
       }
-      printApiLcd();
+      //TODO enviar a resposta para o outro esp
+      String mensagem;
+      serializeJson(doc, mensagem);
+      mqtt.publish(TOPICO_PUB, mensagem.c_str());
+      Serial.printf("Mensagem a ser enviada no tópico %s:\n\r%s\n\r", TOPICO_PUB, mensagem.c_str());
     }
   }
   estadoAnterior = estadoBotao; 
@@ -125,4 +152,29 @@ void printApiLcd()
 
   lcd.setCursor(0,3);
   lcd.printf("Cargo: %s", cargo);
+}
+
+void aoReceber(char* topico, uint8_t* payload, unsigned int tamanho)
+{
+  String mensagem;
+  mensagem.reserve(tamanho);
+
+  for(unsigned int i = 0; i < tamanho; i++)
+  {
+    mensagem += (char)payload[i];
+  }
+
+  Serial.printf("Mensagem Recebida no tópico: %s \n\r mensagem: %s\n\r", topico, 
+  mensagem.c_str());
+
+  tratarJson(mensagem);
+}
+
+void tratarJson(String mensagem)
+{
+  JsonDocument documento;
+
+  DeserializationError codigoErro = deserializeJson(documento, mensagem);
+
+  printApiLcd();
 }
