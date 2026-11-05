@@ -7,6 +7,7 @@
 
 LiquidCrystal_I2C lcd (0x27, 20, 4);
 String pedirParaApi(int);
+void conectarMQTT();
 
 const int pinBotao = 0;
 int contador = 0;
@@ -73,10 +74,20 @@ void setup()
       Serial.print("Falha: "); Serial.println(mqtt.state());
     }
     #pragma endregion
+
+    rgbLedWrite(48, 0, 0, 0);
 }
 
 void loop() 
 {
+  if (WiFi.status() != WL_CONNECTED) 
+  {
+    return;
+  }
+  
+  if (!mqtt.connected()) {
+    conectarMQTT();
+  }
   mqtt.loop();
   
   #pragma region Botão
@@ -89,17 +100,22 @@ void loop()
       contador++;
       String batmanApi = pedirParaApi(contador);
 
+      if (batmanApi != "")
+      {
+        doc.clear();
+
       DeserializationError erroJson = deserializeJson(doc, batmanApi);
       if(erroJson)
       {
         Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
         return;
       }
-      //TODO enviar a resposta para o outro esp
+      
       String mensagem;
       serializeJson(doc, mensagem);
       mqtt.publish(TOPICO_PUB, mensagem.c_str());
       Serial.printf("Mensagem a ser enviada no tópico %s:\n\r%s\n\r", TOPICO_PUB, mensagem.c_str());
+      }
     }
   }
   estadoAnterior = estadoBotao; 
@@ -108,6 +124,7 @@ void loop()
   if (contador >= 83)
   {
     contador = 0;
+    rgbLedWrite(48, 0, 0, 0);
   }
 }
 
@@ -176,5 +193,26 @@ void tratarJson(String mensagem)
 
   DeserializationError codigoErro = deserializeJson(documento, mensagem);
 
-  printApiLcd();
+  if (!codigoErro)
+    printApiLcd();
+  else
+    Serial.printf("Erro %s\n\r", codigoErro);
+}
+
+void conectarMQTT() {
+  static unsigned long ultimaTentativa = 0;
+  
+  if (!mqtt.connected() && (millis() - ultimaTentativa > 2000)) {
+    ultimaTentativa = millis();
+    Serial.println("Tentando conectar ao MQTT");
+    String id = "esp32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    
+    if (mqtt.connect(id.c_str())) {
+      mqtt.subscribe(TOPICO_SUB);
+      Serial.printf("Inscrito no tópico: %s\n\r", TOPICO_SUB);
+    } else {
+      Serial.print("Falha ao conectar. Código de estado: "); 
+      Serial.println(mqtt.state());
+    }
+  }
 }
