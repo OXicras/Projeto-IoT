@@ -80,7 +80,7 @@ void loop()
 
   if (contador >= 83)
   {
-    contador = 1;
+    contador = 0;
   }
 }
 
@@ -107,7 +107,7 @@ void printApiLcd()
 {
   const char* nome = doc["data"]["attributes"]["name"];
   const char* apelido = doc["data"]["attributes"]["alias"];
-  bool vivo = doc["data"]["attributes"]["alive"];
+  const char* genero = doc["data"]["attributes"]["gender"];
   const char* cargo = doc["data"]["attributes"]["role"];
   
   lcd.clear();
@@ -116,7 +116,12 @@ void printApiLcd()
   lcd.setCursor(0,1);
   lcd.printf("Apelido: %s", apelido);
   lcd.setCursor(0,2);
-  lcd.printf("Status: %s", vivo ? "Vivo" : "Morto");
+  lcd.printf("Status: %s", genero);
+
+  if(strcmp(genero, "Male") == 0)
+   rgbLedWrite(48, 0, 0, 255);
+  else
+   rgbLedWrite(48, 255, 0, 0);
 
   lcd.setCursor(0,3);
   lcd.printf("Cargo: %s", cargo);
