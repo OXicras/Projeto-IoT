@@ -7,7 +7,6 @@
 
 LiquidCrystal_I2C lcd (0x27, 20, 4);
 String pedirParaApi(String);
-void conectarMQTT();
 
 const int pinBotao = 0;
 int contador = 0;
@@ -178,34 +177,6 @@ void tratarJson(String mensagem)
     {
       Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
       return;
-    }
-      
-  String mensagem;
-  serializeJson(doc, mensagem);
-  }
-
-  DeserializationError codigoErro = deserializeJson(doc, mensagem);
-
-  if (!codigoErro)
-    printApiLcd();
-  else
-    Serial.printf("Erro %s\n\r", codigoErro);
-}
-
-void conectarMQTT() {
-  static unsigned long ultimaTentativa = 0;
-  
-  if (!mqtt.connected() && (millis() - ultimaTentativa > 2000)) {
-    ultimaTentativa = millis();
-    Serial.println("Tentando conectar ao MQTT");
-    String id = "esp32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-    
-    if (mqtt.connect(id.c_str())) {
-      mqtt.subscribe(TOPICO_SUB);
-      Serial.printf("Inscrito no tópico: %s\n\r", TOPICO_SUB);
-    } else {
-      Serial.print("Falha ao conectar. Código de estado: "); 
-      Serial.println(mqtt.state());
     }
   }
 }
