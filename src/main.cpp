@@ -6,7 +6,7 @@
 #include <PubSubClient.h>
 
 LiquidCrystal_I2C lcd (0x27, 20, 4);
-String pedirParaApi(int);
+String pedirParaApi(String);
 void conectarMQTT();
 
 const int pinBotao = 0;
@@ -17,8 +17,8 @@ String enderecoAPI = "https://api.batmanapi.com/v1/characters/";
 
 const char* BROKER = "broker.emqx.io";
 const int PORTA = 1883;
-const char* TOPICO_SUB = "senai134/esp32/batmanApiBM/comando";
-const char* TOPICO_PUB = "senai134/esp32/batmanApiBM/status";
+const char* TOPICO_SUB = "senai134/esp32/batmanApiBM/espBruno";
+const char* TOPICO_PUB = "senai134/esp32/batmanApiBM/espMatheus";
 
 void aoReceber(char*, byte*, unsigned int);
 void tratarJson(String);
@@ -80,14 +80,6 @@ void setup()
 
 void loop() 
 {
-  if (WiFi.status() != WL_CONNECTED) 
-  {
-    return;
-  }
-  
-  if (!mqtt.connected()) {
-    conectarMQTT();
-  }
   mqtt.loop();
   
   #pragma region Botão
@@ -98,24 +90,10 @@ void loop()
     if(!estadoBotao)
     {
       contador++;
-      String batmanApi = pedirParaApi(contador);
-
-      if (batmanApi != "")
-      {
-        doc.clear();
-
-      DeserializationError erroJson = deserializeJson(doc, batmanApi);
-      if(erroJson)
-      {
-        Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
-        return;
-      }
       
-      String mensagem;
-      serializeJson(doc, mensagem);
+      String mensagem = String(contador);
       mqtt.publish(TOPICO_PUB, mensagem.c_str());
       Serial.printf("Mensagem a ser enviada no tópico %s:\n\r%s\n\r", TOPICO_PUB, mensagem.c_str());
-      }
     }
   }
   estadoAnterior = estadoBotao; 
@@ -128,7 +106,7 @@ void loop()
   }
 }
 
-String pedirParaApi(int codigo)
+String pedirParaApi(String codigo)
 {
   HTTPClient http;
   http.begin(enderecoAPI + codigo + "/");
@@ -189,9 +167,24 @@ void aoReceber(char* topico, uint8_t* payload, unsigned int tamanho)
 
 void tratarJson(String mensagem)
 {
-  JsonDocument documento;
+  String batmanApi = pedirParaApi(mensagem);
 
-  DeserializationError codigoErro = deserializeJson(documento, mensagem);
+  if (batmanApi != "")
+  {
+    doc.clear();
+
+    DeserializationError erroJson = deserializeJson(doc, batmanApi);
+    if(erroJson)
+    {
+      Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
+      return;
+    }
+      
+  String mensagem;
+  serializeJson(doc, mensagem);
+  }
+
+  DeserializationError codigoErro = deserializeJson(doc, mensagem);
 
   if (!codigoErro)
     printApiLcd();
