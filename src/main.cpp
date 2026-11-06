@@ -6,7 +6,7 @@
 #include <PubSubClient.h>
 
 LiquidCrystal_I2C lcd (0x27, 20, 4);
-String pedirParaApi(String);
+String pedirParaApi(int);
 
 const int pinBotao = 0;
 int contador = 0;
@@ -16,8 +16,8 @@ String enderecoAPI = "https://api.batmanapi.com/v1/characters/";
 
 const char* BROKER = "broker.emqx.io";
 const int PORTA = 1883;
-const char* TOPICO_SUB = "senai134/esp32/batmanApiBM/espBruno";
-const char* TOPICO_PUB = "senai134/esp32/batmanApiBM/espMatheus";
+const char* TOPICO_SUB = "senai134/esp32/batmanApiBM/status";
+const char* TOPICO_PUB = "senai134/esp32/batmanApiBM/comando";
 
 void aoReceber(char*, byte*, unsigned int);
 void tratarJson(String);
@@ -37,6 +37,7 @@ void setup()
   lcd.backlight();
   WiFi.begin(nomeRedeWiFi, senhaRedeWiFi);
   pinMode(pinBotao, INPUT_PULLUP);
+  rgbLedWrite(48, 0, 0, 0);
   #pragma endregion
 
   #pragma region Conectando Wifi
@@ -73,8 +74,6 @@ void setup()
       Serial.print("Falha: "); Serial.println(mqtt.state());
     }
     #pragma endregion
-
-    rgbLedWrite(48, 0, 0, 0);
 }
 
 void loop() 
@@ -89,10 +88,20 @@ void loop()
     if(!estadoBotao)
     {
       contador++;
-      
-      String mensagem = String(contador);
+      String batmanApi = pedirParaApi(contador);
+
+      DeserializationError erroJson = deserializeJson(doc, batmanApi);
+      if(erroJson)
+      {
+        Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
+        return;
+      }
+      //TODO enviar a resposta para o outro esp
+      String mensagem;
+      serializeJson(doc, mensagem);
       mqtt.publish(TOPICO_PUB, mensagem.c_str());
       Serial.printf("Mensagem a ser enviada no tópico %s:\n\r%s\n\r", TOPICO_PUB, mensagem.c_str());
+      printApiLcd();
     }
   }
   estadoAnterior = estadoBotao; 
@@ -105,7 +114,7 @@ void loop()
   }
 }
 
-String pedirParaApi(String codigo)
+String pedirParaApi(int codigo)
 {
   HTTPClient http;
   http.begin(enderecoAPI + codigo + "/");
@@ -137,7 +146,7 @@ void printApiLcd()
   lcd.setCursor(0,1);
   lcd.printf("Apelido: %s", apelido);
   lcd.setCursor(0,2);
-  lcd.printf("Status: %s", genero);
+  lcd.printf("Genero: %s", genero);
 
   if(strcmp(genero, "Male") == 0)
    rgbLedWrite(48, 0, 0, 255);
@@ -166,17 +175,14 @@ void aoReceber(char* topico, uint8_t* payload, unsigned int tamanho)
 
 void tratarJson(String mensagem)
 {
-  String batmanApi = pedirParaApi(mensagem);
+  doc.clear(); 
 
-  if (batmanApi != "")
+  DeserializationError codigoErro = deserializeJson(doc, mensagem);
+  if (codigoErro)
   {
-    doc.clear();
-
-    DeserializationError erroJson = deserializeJson(doc, batmanApi);
-    if(erroJson)
-    {
-      Serial.printf("Erro ao deserializar: %s\n\r", erroJson.c_str());
-      return;
-    }
+    Serial.printf("Deu erro na deserialização: %s\n\r", codigoErro.c_str());
+    return;
   }
+
+  printApiLcd();
 }
